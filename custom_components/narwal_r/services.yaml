@@ -1,0 +1,44 @@
+clean_area:
+  name: Clean areas
+  description: Clean mapped Home Assistant areas with Narwal task settings.
+  target:
+    entity:
+      domain: vacuum
+  fields:
+    cleaning_area_id:
+      required: true
+      selector:
+        area:
+          multiple: true
+      name: Cleaning areas
+      description: Home Assistant area IDs mapped to Narwal room segments.
+    cleaning_mode:
+      required: false
+      selector:
+        select:
+          options:
+            - sweep
+            - mop
+            - sweep_and_mop
+            - sweep_then_mop
+      name: Cleaning mode
+    fan_speed:
+      required: false
+      selector:
+        select:
+          options:
+            - quiet
+            - normal
+            - standard
+            - strong
+            - max
+      name: Fan speed
+    mop_humidity:
+      required: false
+      selector:
+        select:
+          options:
+            - dry
+            - normal
+            - wet
+      name: Mop humidity

@@ -1130,10 +1130,11 @@ class NarwalClient:
         Args:
             level: FanLevel enum or int (0=quiet, 1=normal, 2=strong, 3=max).
         """
+        # The robot may reject this while idle, but room-clean payloads can
+        # still use the locally selected value for the next task.
+        self.state.fan_level = int(level)
         payload = b"\x08" + bytes([int(level) & 0x7F])
         resp = await self.send_command(TOPIC_CMD_SET_FAN_LEVEL, payload)
-        if resp.success:
-            self.state.fan_level = int(level)
         return resp
 
     async def set_mop_humidity(self, level: MopHumidity | int) -> CommandResponse:
@@ -1142,10 +1143,11 @@ class NarwalClient:
         Args:
             level: MopHumidity enum or int (0=dry, 1=normal, 2=wet).
         """
+        # Mop humidity is not broadcast by the robot. Keep the selected value
+        # locally so room-specific clean payloads can use it immediately.
+        self.state.mop_humidity = int(level)
         payload = b"\x08" + bytes([int(level) & 0x7F])
         resp = await self.send_command(TOPIC_CMD_SET_MOP_HUMIDITY, payload)
-        if resp.success:
-            self.state.mop_humidity = int(level)
         return resp
 
     async def wash_mop(self) -> CommandResponse:
@@ -1166,10 +1168,11 @@ class NarwalClient:
         Values (pending topic confirmation via sniff_all_topics.py):
           1=sweep, 2=mop, 3=sweep_and_mop, 4=sweep_then_mop
         """
+        # Some firmwares report the previous mode until a task actually starts.
+        # Store the selected task preference locally for the next room clean.
+        self.state.cleaning_mode = int(mode)
         payload = b"\x08" + bytes([mode & 0x7F])
         resp = await self.send_command(TOPIC_CMD_SET_CLEAN_MODE, payload)
-        if resp.success:
-            self.state.cleaning_mode = int(mode)
         return resp
 
     async def set_carpet_detection(self, enabled: bool) -> CommandResponse:

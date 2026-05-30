@@ -133,6 +133,17 @@ class NarwalSelect(NarwalEntity, SelectEntity):
             return None
         return self.entity_description.current_fn(state)
 
+    def _store_option_locally(self, option: str) -> None:
+        """Store selected task preferences that the robot does not broadcast."""
+        state = self.coordinator.client.state
+        if self.entity_description.key == "mop_humidity":
+            state.mop_humidity = int(_MOP_HUMIDITY_TO_ENUM[option])
+        elif self.entity_description.key == "cleaning_mode":
+            state.cleaning_mode = int(_CLEANING_MODE_VALUES[option])
+        elif self.entity_description.key == "suction_level":
+            state.fan_level = int(_SUCTION_TO_FAN_LEVEL[option])
+        self.coordinator.async_set_updated_data(state)
+
     async def async_select_option(self, option: str) -> None:
         """Handle option selection."""
         try:
@@ -140,3 +151,5 @@ class NarwalSelect(NarwalEntity, SelectEntity):
         except NarwalCommandError as err:
             _LOGGER.warning("Command failed for %s (not supported on local WS): %s", self.entity_description.key, err)
         await self.coordinator.async_request_refresh()
+        self._store_option_locally(option)
+        self.async_write_ha_state()
