@@ -7,6 +7,7 @@ import logging
 import random
 import time
 from collections.abc import Callable
+from enum import IntEnum
 from typing import Any
 
 import websockets
@@ -919,21 +920,59 @@ class NarwalClient:
             timeout=10.0,
         )
 
-    def _build_room_clean_payload(self, room_ids: list[int]) -> bytes:
+    @staticmethod
+    def _coerce_int(value: int | IntEnum | None, default: int, minimum: int, maximum: int) -> int:
+        """Return a bounded integer setting for room-clean payload fields."""
+        try:
+            coerced = int(value) if value is not None else default
+        except (TypeError, ValueError):
+            return default
+        return min(max(coerced, minimum), maximum)
+
+    @classmethod
+    def _room_clean_mode(cls, clean_mode: int | None) -> int:
+        """Map HA/global clean mode values to per-room MapCleanParamInfo values.
+
+        Global cleaning mode values used by the select entity are:
+          1=sweep, 2=mop, 3=sweep_and_mop, 4=sweep_then_mop, 5=ai_managed.
+
+        MapCleanParamInfo values confirmed from APK analysis are:
+          0=sweep, 1=mop, 2=sweep+mop. Value 3 is used as a best-effort
+        sweep-then-mop candidate for models/firmware that accept it.
+        """
+        mode = cls._coerce_int(clean_mode, default=3, minimum=1, maximum=5)
+        return {
+            1: 0,  # sweep
+            2: 1,  # mop
+            3: 2,  # sweep_and_mop
+            4: 3,  # sweep_then_mop (best effort; firmware-dependent)
+            5: 2,  # ai_managed -> sweep_and_mop fallback for room jobs
+        }.get(mode, 2)
+
+    def _build_room_clean_payload(
+        self,
+        room_ids: list[int],
+        clean_mode: int | None = None,
+        fan_level: int | FanLevel | None = None,
+        mop_humidity: int | MopHumidity | None = None,
+    ) -> bytes:
         """Build CleanTask protobuf with per-room clean params in field 1.2.
 
         Each room entry in field 1.2 requires full MapCleanParamInfo fields
         (from APK proto analysis):
           field 1: roomId (uint32)
-          field 2: cleanMode (int32) — 0=sweep, 1=mop, 2=sweep+mop
+          field 2: cleanMode (int32) — see _room_clean_mode()
           field 3: cleanTimes (int32) — number of passes
-          field 6: sweepMode (int32) — suction level (3=max)
-          field 7: mopMode (int32) — mop humidity (2=wet)
+          field 6: sweepMode (int32) — FanLevel enum
+          field 7: mopMode (int32) — MopHumidity enum
 
         A bare roomId without clean params is silently ignored by the robot.
 
         Args:
             room_ids: List of room IDs from RoomInfo.room_id.
+            clean_mode: Current NarwalState.cleaning_mode / select value.
+            fan_level: Current FanLevel value.
+            mop_humidity: Current MopHumidity value.
 
         Returns:
             Encoded protobuf bytes for clean/plan/start.
@@ -943,15 +982,30 @@ class NarwalClient:
 
         import blackboxprotobuf
 
-        # Build per-room entries with default clean settings
+        room_clean_mode = self._room_clean_mode(clean_mode)
+        room_fan_level = self._coerce_int(
+            fan_level, default=int(FanLevel.NORMAL), minimum=0, maximum=3
+        )
+        room_mop_humidity = self._coerce_int(
+            mop_humidity, default=int(MopHumidity.NORMAL), minimum=0, maximum=2
+        )
+
+        _LOGGER.debug(
+            "Building room clean payload: rooms=%s clean_mode=%s "
+            "room_clean_mode=%s fan_level=%s mop_humidity=%s",
+            room_ids, clean_mode, room_clean_mode, room_fan_level,
+            room_mop_humidity,
+        )
+
+        # Build per-room entries with the currently selected clean settings.
         room_entries = []
         for rid in room_ids:
             room_entries.append({
                 "1": rid,       # roomId
-                "2": 2,         # cleanMode = sweep+mop
+                "2": room_clean_mode,
                 "3": 1,         # cleanTimes = 1 pass
-                "6": 3,         # sweepMode = max suction
-                "7": 2,         # mopMode = wet
+                "6": room_fan_level,
+                "7": room_mop_humidity,
             })
 
         room_typedef = {
@@ -973,7 +1027,11 @@ class NarwalClient:
             "1": {
                 "2": field_2_value,
                 "5": {
-                    "1": {"1": 3, "2": 2, "3": 1},
+                    "1": {
+                        "1": room_fan_level,
+                        "2": room_mop_humidity,
+                        "3": 1,
+                    },
                     "5": {}
                 }
             }
@@ -1002,7 +1060,13 @@ class NarwalClient:
         }
         return blackboxprotobuf.encode_message(msg, typedef)
 
-    async def start_rooms(self, room_ids: list[int]) -> CommandResponse:
+    async def start_rooms(
+        self,
+        room_ids: list[int],
+        clean_mode: int | None = None,
+        fan_level: int | FanLevel | None = None,
+        mop_humidity: int | MopHumidity | None = None,
+    ) -> CommandResponse:
         """Start room-specific cleaning.
 
         Sends clean/plan/start with room IDs in the CleanTask payload.
@@ -1011,13 +1075,21 @@ class NarwalClient:
 
         Args:
             room_ids: List of room IDs from RoomInfo.room_id.
+            clean_mode: Current NarwalState.cleaning_mode / select value.
+            fan_level: Current FanLevel value.
+            mop_humidity: Current MopHumidity value.
 
         Returns:
             CommandResponse with result code.
         """
         if not room_ids:
             return await self.start()
-        payload = self._build_room_clean_payload(room_ids)
+        payload = self._build_room_clean_payload(
+            room_ids,
+            clean_mode=clean_mode,
+            fan_level=fan_level,
+            mop_humidity=mop_humidity,
+        )
         return await self.send_command(
             TOPIC_CMD_START_CLEAN,
             payload=payload,
@@ -1059,7 +1131,10 @@ class NarwalClient:
             level: FanLevel enum or int (0=quiet, 1=normal, 2=strong, 3=max).
         """
         payload = b"\x08" + bytes([int(level) & 0x7F])
-        return await self.send_command(TOPIC_CMD_SET_FAN_LEVEL, payload)
+        resp = await self.send_command(TOPIC_CMD_SET_FAN_LEVEL, payload)
+        if resp.success:
+            self.state.fan_level = int(level)
+        return resp
 
     async def set_mop_humidity(self, level: MopHumidity | int) -> CommandResponse:
         """Set mop wetness level.
@@ -1068,7 +1143,10 @@ class NarwalClient:
             level: MopHumidity enum or int (0=dry, 1=normal, 2=wet).
         """
         payload = b"\x08" + bytes([int(level) & 0x7F])
-        return await self.send_command(TOPIC_CMD_SET_MOP_HUMIDITY, payload)
+        resp = await self.send_command(TOPIC_CMD_SET_MOP_HUMIDITY, payload)
+        if resp.success:
+            self.state.mop_humidity = int(level)
+        return resp
 
     async def wash_mop(self) -> CommandResponse:
         """Wash the mop pads at the station."""
@@ -1089,27 +1167,42 @@ class NarwalClient:
           1=sweep, 2=mop, 3=sweep_and_mop, 4=sweep_then_mop
         """
         payload = b"\x08" + bytes([mode & 0x7F])
-        return await self.send_command(TOPIC_CMD_SET_CLEAN_MODE, payload)
+        resp = await self.send_command(TOPIC_CMD_SET_CLEAN_MODE, payload)
+        if resp.success:
+            self.state.cleaning_mode = int(mode)
+        return resp
 
     async def set_carpet_detection(self, enabled: bool) -> CommandResponse:
         """Enable or disable carpet detection/avoidance."""
         payload = b"\x08\x01" if enabled else b"\x08\x00"
-        return await self.send_command(TOPIC_CMD_SET_CARPET_DETECT, payload)
+        resp = await self.send_command(TOPIC_CMD_SET_CARPET_DETECT, payload)
+        if resp.success:
+            self.state.carpet_detection = enabled
+        return resp
 
     async def set_ai_dirt_detection(self, enabled: bool) -> CommandResponse:
         """Enable or disable AI dirt detection."""
         payload = b"\x08\x01" if enabled else b"\x08\x00"
-        return await self.send_command(TOPIC_CMD_SET_AI_DIRT_DETECT, payload)
+        resp = await self.send_command(TOPIC_CMD_SET_AI_DIRT_DETECT, payload)
+        if resp.success:
+            self.state.ai_dirt_detection = enabled
+        return resp
 
     async def set_ai_defecation_detection(self, enabled: bool) -> CommandResponse:
         """Enable or disable AI defecation detection."""
         payload = b"\x08\x01" if enabled else b"\x08\x00"
-        return await self.send_command(TOPIC_CMD_SET_AI_DEFECATION_DETECT, payload)
+        resp = await self.send_command(TOPIC_CMD_SET_AI_DEFECATION_DETECT, payload)
+        if resp.success:
+            self.state.ai_defecation_detection = enabled
+        return resp
 
     async def set_child_lock(self, enabled: bool) -> CommandResponse:
         """Enable or disable child lock."""
         payload = b"\x08\x01" if enabled else b"\x08\x00"
-        return await self.send_command(TOPIC_CMD_SET_CHILD_LOCK, payload)
+        resp = await self.send_command(TOPIC_CMD_SET_CHILD_LOCK, payload)
+        if resp.success:
+            self.state.child_lock = enabled
+        return resp
 
     # --- Query commands ---
 

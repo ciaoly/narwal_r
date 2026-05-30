@@ -219,8 +219,21 @@ class NarwalVacuum(NarwalEntity, StateVacuumEntity):
         """
         await self._ensure_awake()
         room_ids = [int(sid) for sid in segment_ids]
-        _LOGGER.info("Starting room-specific clean: rooms=%s", room_ids)
-        resp = await self.coordinator.client.start_rooms(room_ids)
+        state = self.coordinator.data
+        clean_mode = state.cleaning_mode if state is not None else None
+        fan_level = state.fan_level if state is not None else None
+        mop_humidity = state.mop_humidity if state is not None else None
+        _LOGGER.info(
+            "Starting room-specific clean: rooms=%s, clean_mode=%s, "
+            "fan_level=%s, mop_humidity=%s",
+            room_ids, clean_mode, fan_level, mop_humidity,
+        )
+        resp = await self.coordinator.client.start_rooms(
+            room_ids,
+            clean_mode=clean_mode,
+            fan_level=fan_level,
+            mop_humidity=mop_humidity,
+        )
         try:
             result_name = CommandResult(resp.result_code).name
         except ValueError:
