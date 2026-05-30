@@ -21,6 +21,7 @@ NARWAL_MODELS: dict[str, str] = {
     "Narwal J4 / J4 Pure": "EHf6cRNRGT",
     "Narwal J4 Lite": "6NjIDYxBXb",
     "Narwal J5": "hEA7OEshlx",
+    "Narwal JX": "CGjuB6dzq7",
     # J5C / J5X — product_key unknown; run tools/discover_product_key.py and
     # open a GitHub issue to contribute it.
 
