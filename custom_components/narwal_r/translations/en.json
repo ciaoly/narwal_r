@@ -67,7 +67,8 @@
           "sweep": "Sweep only",
           "mop": "Mop only",
           "sweep_and_mop": "Sweep and mop",
-          "sweep_then_mop": "Sweep then mop"
+          "sweep_then_mop": "Sweep then mop",
+          "ai_managed": "AI managed"
         }
       },
       "suction_level": {

@@ -91,7 +91,8 @@
           "sweep": "仅扫地",
           "mop": "仅拖地",
           "sweep_and_mop": "扫拖同步",
-          "sweep_then_mop": "先扫后拖"
+          "sweep_then_mop": "先扫后拖",
+          "ai_managed": "鲸灵托管"
         }
       },
       "suction_level": {

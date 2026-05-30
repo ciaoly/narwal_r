@@ -32,6 +32,7 @@ CLEANING_MODE_MAP: dict[str, int] = {
     "mop": 2,
     "sweep_and_mop": 3,
     "sweep_then_mop": 4,
+    "ai_managed": 5,
 }
 
 MOP_HUMIDITY_MAP: dict[str, MopHumidity] = {

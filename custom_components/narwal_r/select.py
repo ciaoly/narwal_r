@@ -33,12 +33,19 @@ _MOP_HUMIDITY_FROM_ENUM = {v: k for k, v in _MOP_HUMIDITY_TO_ENUM.items()}
 # NOTE: topic and payload values are pending confirmation via sniff_all_topics.py.
 # Run: python3 tools/sniff_all_topics.py --subscribe --out dump.json
 #      then switch modes in the App to capture the topic+payload.
-CLEANING_MODE_OPTIONS = ["sweep", "mop", "sweep_and_mop", "sweep_then_mop"]
+CLEANING_MODE_OPTIONS = [
+    "sweep",
+    "mop",
+    "sweep_and_mop",
+    "sweep_then_mop",
+    "ai_managed",
+]
 _CLEANING_MODE_VALUES = {
     "sweep": 1,
     "mop": 2,
     "sweep_and_mop": 3,
     "sweep_then_mop": 4,
+    "ai_managed": 5,
 }
 _CLEANING_MODE_FROM_VALUE = {v: k for k, v in _CLEANING_MODE_VALUES.items()}
 

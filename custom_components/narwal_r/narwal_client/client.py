@@ -936,9 +936,9 @@ class NarwalClient:
         Global cleaning mode values used by the select entity are:
           1=sweep, 2=mop, 3=sweep_and_mop, 4=sweep_then_mop, 5=ai_managed.
 
-        MapCleanParamInfo values confirmed from APK analysis are:
-          0=sweep, 1=mop, 2=sweep+mop. Value 3 is used as a best-effort
-        sweep-then-mop candidate for models/firmware that accept it.
+        MapCleanParamInfo values differ by model/firmware. Older APK analysis
+        confirmed 0=sweep, 1=mop, 2=sweep+mop. JX firmware also supports
+        3=sweep_then_mop and 5=ai_managed, so pass those through.
         """
         mode = cls._coerce_int(clean_mode, default=3, minimum=1, maximum=5)
         return {
@@ -946,7 +946,7 @@ class NarwalClient:
             2: 1,  # mop
             3: 2,  # sweep_and_mop
             4: 3,  # sweep_then_mop (best effort; firmware-dependent)
-            5: 2,  # ai_managed -> sweep_and_mop fallback for room jobs
+            5: 5,  # ai_managed
         }.get(mode, 2)
 
     def _build_room_clean_payload(

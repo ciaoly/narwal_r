@@ -21,6 +21,7 @@ clean_area:
             - mop
             - sweep_and_mop
             - sweep_then_mop
+            - ai_managed
       name: Cleaning mode
     fan_speed:
       required: false
